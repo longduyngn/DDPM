@@ -18,7 +18,18 @@ def inference(checkpoint_path: str):
     
     # Khôi phục EMA (Mô hình EMA cho chất lượng ảnh mượt mà hơn)
     ema = ModelEmaV3(model, decay=config.EMA_DECAY)
-    ema.load_state_dict(checkpoint['ema'])
+    
+    # Tải an toàn EMA state_dict phòng trường hợp lệch cấu hình GPU/Multi-GPU
+    ema_state_dict = checkpoint['ema']
+    has_double_module = any(k.startswith('module.module.') for k in ema_state_dict.keys())
+    expects_double_module = any(k.startswith('module.module.') for k in ema.state_dict().keys())
+    
+    if has_double_module and not expects_double_module:
+        ema_state_dict = {k.replace('module.module.', 'module.'): v for k, v in ema_state_dict.items()}
+    elif not has_double_module and expects_double_module:
+        ema_state_dict = {k.replace('module.', 'module.module.'): v for k, v in ema_state_dict.items()}
+        
+    ema.load_state_dict(ema_state_dict)
     eval_model = ema.module.eval()
 
     scheduler = DDPM_Scheduler(num_time_steps=config.NUM_TIME_STEPS).to(config.DEVICE)

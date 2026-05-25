@@ -8,7 +8,7 @@ NUM_GPUS = torch.cuda.device_count() if torch.cuda.is_available() else 0
 # --- Siêu tham số Huấn luyện ---
 BATCH_SIZE = 64
 NUM_TIME_STEPS = 1000
-NUM_EPOCHS = 75
+NUM_EPOCHS = 3
 LR = 2e-5
 EMA_DECAY = 0.9999
 SEED = 42

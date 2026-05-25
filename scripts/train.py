@@ -42,7 +42,10 @@ def train(resume_checkpoint=None):
                               drop_last=True, num_workers=config.NUM_WORKERS, pin_memory=True)
 
     scheduler = DDPM_Scheduler(num_time_steps=config.NUM_TIME_STEPS).to(config.DEVICE)
-    model = UNET()
+    model = UNET().to(config.DEVICE)
+    
+    # Khởi tạo EMA với model gốc (chưa wrap DataParallel) để lưu checkpoint đồng nhất
+    ema = ModelEmaV3(model, decay=config.EMA_DECAY)
     
     # --- GIAI ĐOẠN 3: TỰ ĐỘNG ĐA GPU (Multi-GPU Allocation) ---
     if config.NUM_GPUS > 1:
@@ -51,9 +54,7 @@ def train(resume_checkpoint=None):
     else:
         print(f"[*] Using {config.DEVICE}.")
         
-    model = model.to(config.DEVICE)
     optimizer = optim.Adam(model.parameters(), lr=config.LR)
-    ema = ModelEmaV3(model, decay=config.EMA_DECAY)
     
     # Cấu hình AMP và best loss
     scaler = GradScaler('cuda')
@@ -74,7 +75,17 @@ def train(resume_checkpoint=None):
             model.module.load_state_dict(checkpoint['weights'])
         else:
             model.load_state_dict(checkpoint['weights'])
-        ema.load_state_dict(checkpoint['ema'])
+        # Tải an toàn EMA state_dict phòng trường hợp lệch cấu hình GPU/Multi-GPU
+        ema_state_dict = checkpoint['ema']
+        has_double_module = any(k.startswith('module.module.') for k in ema_state_dict.keys())
+        expects_double_module = any(k.startswith('module.module.') for k in ema.state_dict().keys())
+        
+        if has_double_module and not expects_double_module:
+            ema_state_dict = {k.replace('module.module.', 'module.'): v for k, v in ema_state_dict.items()}
+        elif not has_double_module and expects_double_module:
+            ema_state_dict = {k.replace('module.', 'module.module.'): v for k, v in ema_state_dict.items()}
+            
+        ema.load_state_dict(ema_state_dict)
         optimizer.load_state_dict(checkpoint['optimizer'])
         if 'scaler' in checkpoint:
             scaler.load_state_dict(checkpoint['scaler'])
