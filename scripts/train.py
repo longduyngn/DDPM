@@ -14,6 +14,7 @@ from timm.utils import ModelEmaV3
 from tqdm import tqdm
 import random
 import numpy as np
+from torch.cuda.amp import autocast, GradScaler
 
 import config
 from network import UNET
@@ -38,7 +39,7 @@ def train(resume_checkpoint=None):
     
     train_dataset = datasets.MNIST(root=config.DATA_DIR, train=True, download=True, transform=transform)
     train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, 
-                              drop_last=True, num_workers=config.NUM_WORKERS)
+                              drop_last=True, num_workers=config.NUM_WORKERS, pin_memory=True)
 
     scheduler = DDPM_Scheduler(num_time_steps=config.NUM_TIME_STEPS).to(config.DEVICE)
     model = UNET()
@@ -54,6 +55,17 @@ def train(resume_checkpoint=None):
     optimizer = optim.Adam(model.parameters(), lr=config.LR)
     ema = ModelEmaV3(model, decay=config.EMA_DECAY)
     
+    # Cấu hình AMP và best loss
+    scaler = GradScaler()
+    best_loss = float('inf')
+    
+    if resume_checkpoint == 'latest':
+        latest_path = os.path.join(config.CHECKPOINT_DIR, 'latest_ddpm.pt')
+        if os.path.exists(latest_path):
+            resume_checkpoint = latest_path
+        else:
+            resume_checkpoint = None
+
     start_epoch = 0
     if resume_checkpoint is not None and os.path.exists(resume_checkpoint):
         checkpoint = torch.load(resume_checkpoint, map_location=config.DEVICE)
@@ -64,8 +76,11 @@ def train(resume_checkpoint=None):
             model.load_state_dict(checkpoint['weights'])
         ema.load_state_dict(checkpoint['ema'])
         optimizer.load_state_dict(checkpoint['optimizer'])
+        if 'scaler' in checkpoint:
+            scaler.load_state_dict(checkpoint['scaler'])
+        best_loss = checkpoint.get('best_loss', float('inf'))
         start_epoch = checkpoint.get('epoch', 0)
-        print(f"[*] Resumed from epoch {start_epoch}")
+        print(f"[*] Resumed from epoch {start_epoch} (Best Loss: {best_loss:.5f})")
 
     criterion = nn.MSELoss(reduction='mean')
 
@@ -76,28 +91,38 @@ def train(resume_checkpoint=None):
         
         for bidx, (x, _) in enumerate(pbar):
             # Cấp phát thiết bị động
-            x = x.to(config.DEVICE)
+            x = x.to(config.DEVICE, non_blocking=True)
             x = F.pad(x, (2, 2, 2, 2))
             
-            t = torch.randint(0, config.NUM_TIME_STEPS, (config.BATCH_SIZE,), device=config.DEVICE)
+            # Sử dụng x.size(0) thay cho config.BATCH_SIZE để an toàn nếu chạy batch cuối hoặc chia batch trên Multi-GPU
+            curr_batch_size = x.size(0)
+            t = torch.randint(0, config.NUM_TIME_STEPS, (curr_batch_size,), device=config.DEVICE)
             e = torch.randn_like(x) # Phân phối chuẩn
             
             # Lấy alpha_bar (tích lũy)
-            a_bar = scheduler.alpha_bar[t].view(config.BATCH_SIZE, 1, 1, 1)
+            a_bar = scheduler.alpha_bar[t].view(curr_batch_size, 1, 1, 1)
             x_noisy = (torch.sqrt(a_bar) * x) + (torch.sqrt(1 - a_bar) * e)
             
-            output = model(x_noisy, t)
-            
             optimizer.zero_grad()
-            loss = criterion(output, e)
+            
+            # Autocast phục vụ mixed precision
+            with autocast():
+                output = model(x_noisy, t)
+                loss = criterion(output, e)
+            
             total_loss += loss.item()
-            loss.backward()
-            optimizer.step()
+            
+            # Lan truyền ngược và tối ưu hóa sử dụng GradScaler
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            
             ema.update(model)
             
             pbar.set_postfix({'loss': f"{loss.item():.4f}"})
 
-        print(f'Epoch {i+1} | Avg Loss: {total_loss / len(train_loader):.5f}')
+        avg_loss = total_loss / len(train_loader)
+        print(f'Epoch {i+1} | Avg Loss: {avg_loss:.5f}')
 
         # --- Trích xuất State Dict an toàn ---
         # Nếu model là DataParallel, ta chỉ lưu phần `module` bên trong để tương thích khi load
@@ -107,9 +132,28 @@ def train(resume_checkpoint=None):
             'epoch': i + 1,
             'weights': model_state,
             'optimizer': optimizer.state_dict(),
-            'ema': ema.state_dict()
+            'ema': ema.state_dict(),
+            'scaler': scaler.state_dict(),
+            'best_loss': best_loss
         }
-        torch.save(checkpoint, os.path.join(config.CHECKPOINT_DIR, f'ddpm_epoch_{i+1}.pt'))
+        
+        # 1. Luôn lưu đè vào file latest_ddpm.pt để có thể resume
+        latest_path = os.path.join(config.CHECKPOINT_DIR, 'latest_ddpm.pt')
+        torch.save(checkpoint, latest_path)
+        
+        # 2. Chỉ lưu best_ddpm.pt nếu loss đạt mức thấp nhất mới
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            checkpoint['best_loss'] = best_loss
+            best_path = os.path.join(config.CHECKPOINT_DIR, 'best_ddpm.pt')
+            torch.save(checkpoint, best_path)
+            print(f"[*] New best loss ({best_loss:.5f}). Saved to {best_path}")
+            
+        # 3. Chỉ lưu checkpoint định kỳ mỗi 10 epoch hoặc ở epoch cuối cùng
+        if (i + 1) % 10 == 0 or (i + 1) == config.NUM_EPOCHS:
+            epoch_path = os.path.join(config.CHECKPOINT_DIR, f'ddpm_epoch_{i+1}.pt')
+            torch.save(checkpoint, epoch_path)
+            print(f"[*] Saved periodic checkpoint to {epoch_path}")
 
 if __name__ == '__main__':
     train()

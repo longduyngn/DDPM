@@ -56,8 +56,11 @@ def inference(checkpoint_path: str):
             display_reverse(images)
 
 if __name__ == '__main__':
-    # Chạy inference với file checkpoint mong muốn
-    ckpt_path = os.path.join(config.CHECKPOINT_DIR, 'ddpm_epoch_1.pt')
+    # Chạy inference với file checkpoint mong muốn (thường là best_ddpm.pt hoặc latest_ddpm.pt)
+    ckpt_path = os.path.join(config.CHECKPOINT_DIR, 'best_ddpm.pt')
+    if not os.path.exists(ckpt_path):
+        ckpt_path = os.path.join(config.CHECKPOINT_DIR, 'latest_ddpm.pt')
+        
     if os.path.exists(ckpt_path):
         inference(ckpt_path)
     else:
