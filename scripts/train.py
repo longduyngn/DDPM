@@ -14,7 +14,7 @@ from timm.utils import ModelEmaV3
 from tqdm import tqdm
 import random
 import numpy as np
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 
 import config
 from network import UNET
@@ -56,7 +56,7 @@ def train(resume_checkpoint=None):
     ema = ModelEmaV3(model, decay=config.EMA_DECAY)
     
     # Cấu hình AMP và best loss
-    scaler = GradScaler()
+    scaler = GradScaler('cuda')
     best_loss = float('inf')
     
     if resume_checkpoint == 'latest':
@@ -106,7 +106,7 @@ def train(resume_checkpoint=None):
             optimizer.zero_grad()
             
             # Autocast phục vụ mixed precision
-            with autocast():
+            with autocast('cuda'):
                 output = model(x_noisy, t)
                 loss = criterion(output, e)
             
