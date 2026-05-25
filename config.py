@@ -28,7 +28,9 @@ TIME_EMB_DIM = max(CHANNELS) # Chiều lớn nhất để làm vector thời gia
 # --- Đường dẫn ---
 DATA_DIR = '../data'
 CHECKPOINT_DIR = '../checkpoints'
+REPORT_DIR = 'report'
 
 # Đảm bảo thư mục lưu trữ tồn tại
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+os.makedirs(REPORT_DIR, exist_ok=True)

@@ -18,18 +18,7 @@ def inference(checkpoint_path: str):
     
     # Khôi phục EMA (Mô hình EMA cho chất lượng ảnh mượt mà hơn)
     ema = ModelEmaV3(model, decay=config.EMA_DECAY)
-    
-    # Tải an toàn EMA state_dict phòng trường hợp lệch cấu hình GPU/Multi-GPU
-    ema_state_dict = checkpoint['ema']
-    has_double_module = any(k.startswith('module.module.') for k in ema_state_dict.keys())
-    expects_double_module = any(k.startswith('module.module.') for k in ema.state_dict().keys())
-    
-    if has_double_module and not expects_double_module:
-        ema_state_dict = {k.replace('module.module.', 'module.'): v for k, v in ema_state_dict.items()}
-    elif not has_double_module and expects_double_module:
-        ema_state_dict = {k.replace('module.', 'module.module.'): v for k, v in ema_state_dict.items()}
-        
-    ema.load_state_dict(ema_state_dict)
+    ema.load_state_dict(checkpoint['ema'])
     eval_model = ema.module.eval()
 
     scheduler = DDPM_Scheduler(num_time_steps=config.NUM_TIME_STEPS).to(config.DEVICE)
@@ -63,8 +52,9 @@ def inference(checkpoint_path: str):
             x = (1 / torch.sqrt(scheduler.alpha[0])) * z - (temp * eval_model(z, t_tensor))
             
             images.append(x)
-            print("[*] Inference complete. Displaying sequence...")
-            display_reverse(images)
+            print("[*] Inference complete. Saving sequence...")
+            save_img_path = os.path.join(config.REPORT_DIR, f'generated_sequence_{i+1}.png')
+            display_reverse(images, save_path=save_img_path)
 
 if __name__ == '__main__':
     # Chạy inference với file checkpoint mong muốn (thường là best_ddpm.pt hoặc latest_ddpm.pt)

@@ -15,6 +15,7 @@ from tqdm import tqdm
 import random
 import numpy as np
 from torch.amp import autocast, GradScaler
+import matplotlib.pyplot as plt
 
 import config
 from network import UNET
@@ -42,10 +43,7 @@ def train(resume_checkpoint=None):
                               drop_last=True, num_workers=config.NUM_WORKERS, pin_memory=True)
 
     scheduler = DDPM_Scheduler(num_time_steps=config.NUM_TIME_STEPS).to(config.DEVICE)
-    model = UNET().to(config.DEVICE)
-    
-    # Khởi tạo EMA với model gốc (chưa wrap DataParallel) để lưu checkpoint đồng nhất
-    ema = ModelEmaV3(model, decay=config.EMA_DECAY)
+    model = UNET()
     
     # --- GIAI ĐOẠN 3: TỰ ĐỘNG ĐA GPU (Multi-GPU Allocation) ---
     if config.NUM_GPUS > 1:
@@ -54,11 +52,14 @@ def train(resume_checkpoint=None):
     else:
         print(f"[*] Using {config.DEVICE}.")
         
+    model = model.to(config.DEVICE)
     optimizer = optim.Adam(model.parameters(), lr=config.LR)
+    ema = ModelEmaV3(model, decay=config.EMA_DECAY)
     
     # Cấu hình AMP và best loss
     scaler = GradScaler('cuda')
     best_loss = float('inf')
+    train_losses = []
     
     if resume_checkpoint == 'latest':
         latest_path = os.path.join(config.CHECKPOINT_DIR, 'latest_ddpm.pt')
@@ -75,21 +76,12 @@ def train(resume_checkpoint=None):
             model.module.load_state_dict(checkpoint['weights'])
         else:
             model.load_state_dict(checkpoint['weights'])
-        # Tải an toàn EMA state_dict phòng trường hợp lệch cấu hình GPU/Multi-GPU
-        ema_state_dict = checkpoint['ema']
-        has_double_module = any(k.startswith('module.module.') for k in ema_state_dict.keys())
-        expects_double_module = any(k.startswith('module.module.') for k in ema.state_dict().keys())
-        
-        if has_double_module and not expects_double_module:
-            ema_state_dict = {k.replace('module.module.', 'module.'): v for k, v in ema_state_dict.items()}
-        elif not has_double_module and expects_double_module:
-            ema_state_dict = {k.replace('module.', 'module.module.'): v for k, v in ema_state_dict.items()}
-            
-        ema.load_state_dict(ema_state_dict)
+        ema.load_state_dict(checkpoint['ema'])
         optimizer.load_state_dict(checkpoint['optimizer'])
         if 'scaler' in checkpoint:
             scaler.load_state_dict(checkpoint['scaler'])
         best_loss = checkpoint.get('best_loss', float('inf'))
+        train_losses = checkpoint.get('train_losses', [])
         start_epoch = checkpoint.get('epoch', 0)
         print(f"[*] Resumed from epoch {start_epoch} (Best Loss: {best_loss:.5f})")
 
@@ -134,6 +126,7 @@ def train(resume_checkpoint=None):
 
         avg_loss = total_loss / len(train_loader)
         print(f'Epoch {i+1} | Avg Loss: {avg_loss:.5f}')
+        train_losses.append(avg_loss)
 
         # --- Trích xuất State Dict an toàn ---
         # Nếu model là DataParallel, ta chỉ lưu phần `module` bên trong để tương thích khi load
@@ -145,7 +138,8 @@ def train(resume_checkpoint=None):
             'optimizer': optimizer.state_dict(),
             'ema': ema.state_dict(),
             'scaler': scaler.state_dict(),
-            'best_loss': best_loss
+            'best_loss': best_loss,
+            'train_losses': train_losses
         }
         
         # 1. Luôn lưu đè vào file latest_ddpm.pt để có thể resume
@@ -165,6 +159,20 @@ def train(resume_checkpoint=None):
             epoch_path = os.path.join(config.CHECKPOINT_DIR, f'ddpm_epoch_{i+1}.pt')
             torch.save(checkpoint, epoch_path)
             print(f"[*] Saved periodic checkpoint to {epoch_path}")
+
+    # 4. Vẽ biểu đồ loss và lưu lại sau khi kết thúc huấn luyện
+    if len(train_losses) > 0:
+        plt.figure(figsize=(10, 5))
+        plt.plot(train_losses, label='Train Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('DDPM Training Loss Curve')
+        plt.legend()
+        plt.grid(True)
+        loss_plot_path = os.path.join(config.REPORT_DIR, 'loss_plot.png')
+        plt.savefig(loss_plot_path, bbox_inches='tight')
+        plt.close()
+        print(f"[*] Saved loss plot to {loss_plot_path}")
 
 if __name__ == '__main__':
     train()

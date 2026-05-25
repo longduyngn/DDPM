@@ -80,7 +80,7 @@ class DDPM_Scheduler(nn.Module):
         self.register_buffer('alpha', alpha)
         self.register_buffer('alpha_bar', alpha_bar)
 
-def display_reverse(images: list):
+def display_reverse(images: list, save_path: str = None):
     fig, axes = plt.subplots(1, len(images), figsize=(len(images), 1))
     for i, ax in enumerate(axes.flat):
         x = images[i].squeeze(0).cpu()
@@ -89,4 +89,10 @@ def display_reverse(images: list):
         x = (x + 1.0) / 2.0
         ax.imshow(x, cmap='gray')
         ax.axis('off')
-    plt.show()
+    
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches='tight', dpi=150)
+        print(f"[*] Saved reverse diffusion process to {save_path}")
+    else:
+        plt.show()
+    plt.close(fig)
