@@ -22,6 +22,8 @@ def inference(checkpoint_path: str, num_samples: int = 5):
     ema = ModelEmaV3(model, decay=src.config.EMA_DECAY)
     ema.load_state_dict(checkpoint['ema'])
     eval_model = ema.module.eval()
+    s = sum([p.numel() for p in model.parameters()])
+    print(f"[*] Number of parameters: {s}")
 
     scheduler = DDPM_Scheduler(num_time_steps=src.config.NUM_TIME_STEPS).to(src.config.DEVICE)
     times = [0, 15, 50, 100, 200, 300, 400, 550, 700, 999]

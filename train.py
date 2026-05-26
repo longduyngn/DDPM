@@ -40,7 +40,8 @@ def train(resume_checkpoint=None):
     
     train_dataset = datasets.MNIST(root=src.config.DATA_DIR, train=True, download=True, transform=transform)
     train_loader = DataLoader(train_dataset, batch_size=src.config.BATCH_SIZE, shuffle=True, 
-                              drop_last=True, num_workers=src.config.NUM_WORKERS, pin_memory=True)
+                              drop_last=True, num_workers=src.config.NUM_WORKERS, pin_memory=True,
+                              persistent_workers=(src.config.NUM_WORKERS > 0))
 
     scheduler = DDPM_Scheduler(num_time_steps=src.config.NUM_TIME_STEPS).to(src.config.DEVICE)
     model = UNET()
