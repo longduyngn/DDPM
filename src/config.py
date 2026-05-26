@@ -8,7 +8,7 @@ NUM_GPUS = torch.cuda.device_count() if torch.cuda.is_available() else 0
 # --- Siêu tham số Huấn luyện ---
 BATCH_SIZE = 64
 NUM_TIME_STEPS = 1000
-NUM_EPOCHS = 3
+NUM_EPOCHS = 75
 LR = 2e-5
 EMA_DECAY = 0.9999
 SEED = 42
@@ -26,8 +26,8 @@ OUTPUT_CHANNELS = 1
 TIME_EMB_DIM = max(CHANNELS) # Chiều lớn nhất để làm vector thời gian chuẩn
 
 # --- Đường dẫn ---
-DATA_DIR = '../data'
-CHECKPOINT_DIR = '../checkpoints'
+DATA_DIR = 'data'
+CHECKPOINT_DIR = 'checkpoints'
 REPORT_DIR = 'report'
 
 # Đảm bảo thư mục lưu trữ tồn tại

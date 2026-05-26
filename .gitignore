@@ -13,3 +13,5 @@ Thumbs.db
 
 # Project folders
 report/
+checkpoints/
+data/

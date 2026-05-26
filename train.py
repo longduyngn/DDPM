@@ -1,8 +1,8 @@
 import sys
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-# Đưa thư mục gốc vào đường dẫn để import được các file ở cấp trên
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Đưa thư mục chứa train.py vào sys.path để import được gói src từ bất kỳ thư mục làm việc nào
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import torch
 import torch.nn as nn
@@ -17,9 +17,9 @@ import numpy as np
 from torch.amp import autocast, GradScaler
 import matplotlib.pyplot as plt
 
-import config
-from network import UNET
-from modules import DDPM_Scheduler
+import src.config
+from src.network import UNET
+from src.modules import DDPM_Scheduler
 
 def set_seed(seed: int = 42):
     torch.manual_seed(seed)
@@ -30,7 +30,7 @@ def set_seed(seed: int = 42):
     random.seed(seed)
 
 def train(resume_checkpoint=None):
-    set_seed(config.SEED)
+    set_seed(src.config.SEED)
     
     # Chuẩn hóa về [-1, 1]
     transform = transforms.Compose([
@@ -38,31 +38,34 @@ def train(resume_checkpoint=None):
         transforms.Normalize((0.5,), (0.5,))
     ])
     
-    train_dataset = datasets.MNIST(root=config.DATA_DIR, train=True, download=True, transform=transform)
-    train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, 
-                              drop_last=True, num_workers=config.NUM_WORKERS, pin_memory=True)
+    train_dataset = datasets.MNIST(root=src.config.DATA_DIR, train=True, download=True, transform=transform)
+    train_loader = DataLoader(train_dataset, batch_size=src.config.BATCH_SIZE, shuffle=True, 
+                              drop_last=True, num_workers=src.config.NUM_WORKERS, pin_memory=True)
 
-    scheduler = DDPM_Scheduler(num_time_steps=config.NUM_TIME_STEPS).to(config.DEVICE)
+    scheduler = DDPM_Scheduler(num_time_steps=src.config.NUM_TIME_STEPS).to(src.config.DEVICE)
     model = UNET()
     
     # --- GIAI ĐOẠN 3: TỰ ĐỘNG ĐA GPU (Multi-GPU Allocation) ---
-    if config.NUM_GPUS > 1:
-        print(f"[*] Detected {config.NUM_GPUS} GPUs. Wrapping model with DataParallel.")
+    if src.config.NUM_GPUS > 1:
+        print(f"[*] Detected {src.config.NUM_GPUS} GPUs. Wrapping model with DataParallel.")
         model = nn.DataParallel(model)
     else:
-        print(f"[*] Using {config.DEVICE}.")
+        print(f"[*] Using {src.config.DEVICE}.")
         
-    model = model.to(config.DEVICE)
-    optimizer = optim.Adam(model.parameters(), lr=config.LR)
-    ema = ModelEmaV3(model, decay=config.EMA_DECAY)
+    model = model.to(src.config.DEVICE)
+    optimizer = optim.Adam(model.parameters(), lr=src.config.LR)
     
-    # Cấu hình AMP và best loss
-    scaler = GradScaler('cuda')
+    # Khởi tạo EMA trên base model để tránh lưu checkpoint có tiền tố 'module.' trên Multi-GPU
+    base_model = model.module if isinstance(model, nn.DataParallel) else model
+    ema = ModelEmaV3(base_model, decay=src.config.EMA_DECAY)
+    
+    # Cấu hình AMP và best loss (chỉ kích hoạt scaler thực sự khi dùng CUDA)
+    scaler = GradScaler(device=src.config.DEVICE.type, enabled=(src.config.DEVICE.type == 'cuda'))
     best_loss = float('inf')
     train_losses = []
     
     if resume_checkpoint == 'latest':
-        latest_path = os.path.join(config.CHECKPOINT_DIR, 'latest_ddpm.pt')
+        latest_path = os.path.join(src.config.CHECKPOINT_DIR, 'latest_ddpm.pt')
         if os.path.exists(latest_path):
             resume_checkpoint = latest_path
         else:
@@ -70,7 +73,7 @@ def train(resume_checkpoint=None):
 
     start_epoch = 0
     if resume_checkpoint is not None and os.path.exists(resume_checkpoint):
-        checkpoint = torch.load(resume_checkpoint, map_location=config.DEVICE)
+        checkpoint = torch.load(resume_checkpoint, map_location=src.config.DEVICE)
         # Xử lý an toàn tiền tố 'module.' nếu load checkpoint từ Multi-GPU sang Single-GPU
         if isinstance(model, nn.DataParallel):
             model.module.load_state_dict(checkpoint['weights'])
@@ -87,19 +90,19 @@ def train(resume_checkpoint=None):
 
     criterion = nn.MSELoss(reduction='mean')
 
-    for i in range(start_epoch, config.NUM_EPOCHS):
+    for i in range(start_epoch, src.config.NUM_EPOCHS):
         model.train()
         total_loss = 0
-        pbar = tqdm(train_loader, desc=f"Epoch {i+1}/{config.NUM_EPOCHS}")
+        pbar = tqdm(train_loader, desc=f"Epoch {i+1}/{src.config.NUM_EPOCHS}")
         
         for bidx, (x, _) in enumerate(pbar):
             # Cấp phát thiết bị động
-            x = x.to(config.DEVICE, non_blocking=True)
+            x = x.to(src.config.DEVICE, non_blocking=True)
             x = F.pad(x, (2, 2, 2, 2))
             
             # Sử dụng x.size(0) thay cho config.BATCH_SIZE để an toàn nếu chạy batch cuối hoặc chia batch trên Multi-GPU
             curr_batch_size = x.size(0)
-            t = torch.randint(0, config.NUM_TIME_STEPS, (curr_batch_size,), device=config.DEVICE)
+            t = torch.randint(0, src.config.NUM_TIME_STEPS, (curr_batch_size,), device=src.config.DEVICE)
             e = torch.randn_like(x) # Phân phối chuẩn
             
             # Lấy alpha_bar (tích lũy)
@@ -108,8 +111,10 @@ def train(resume_checkpoint=None):
             
             optimizer.zero_grad()
             
-            # Autocast phục vụ mixed precision
-            with autocast('cuda'):
+            # Autocast phục vụ mixed precision (chỉ bật khi dùng CUDA)
+            device_type = src.config.DEVICE.type
+            enabled = (device_type == 'cuda')
+            with autocast(device_type=device_type, enabled=enabled):
                 output = model(x_noisy, t)
                 loss = criterion(output, e)
             
@@ -143,20 +148,20 @@ def train(resume_checkpoint=None):
         }
         
         # 1. Luôn lưu đè vào file latest_ddpm.pt để có thể resume
-        latest_path = os.path.join(config.CHECKPOINT_DIR, 'latest_ddpm.pt')
+        latest_path = os.path.join(src.config.CHECKPOINT_DIR, 'latest_ddpm.pt')
         torch.save(checkpoint, latest_path)
         
         # 2. Chỉ lưu best_ddpm.pt nếu loss đạt mức thấp nhất mới
         if avg_loss < best_loss:
             best_loss = avg_loss
             checkpoint['best_loss'] = best_loss
-            best_path = os.path.join(config.CHECKPOINT_DIR, 'best_ddpm.pt')
+            best_path = os.path.join(src.config.CHECKPOINT_DIR, 'best_ddpm.pt')
             torch.save(checkpoint, best_path)
             print(f"[*] New best loss ({best_loss:.5f}). Saved to {best_path}")
             
         # 3. Chỉ lưu checkpoint định kỳ mỗi 10 epoch hoặc ở epoch cuối cùng
-        if (i + 1) % 10 == 0 or (i + 1) == config.NUM_EPOCHS:
-            epoch_path = os.path.join(config.CHECKPOINT_DIR, f'ddpm_epoch_{i+1}.pt')
+        if (i + 1) % 10 == 0 or (i + 1) == src.config.NUM_EPOCHS:
+            epoch_path = os.path.join(src.config.CHECKPOINT_DIR, f'ddpm_epoch_{i+1}.pt')
             torch.save(checkpoint, epoch_path)
             print(f"[*] Saved periodic checkpoint to {epoch_path}")
 
@@ -169,7 +174,7 @@ def train(resume_checkpoint=None):
         plt.title('DDPM Training Loss Curve')
         plt.legend()
         plt.grid(True)
-        loss_plot_path = os.path.join(config.REPORT_DIR, 'loss_plot.png')
+        loss_plot_path = os.path.join(src.config.REPORT_DIR, 'loss_plot.png')
         plt.savefig(loss_plot_path, bbox_inches='tight')
         plt.close()
         print(f"[*] Saved loss plot to {loss_plot_path}")

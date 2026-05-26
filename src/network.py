@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from modules import ResBlock, Attention, SinusoidalEmbeddings
-import config
+from src.modules import ResBlock, Attention, SinusoidalEmbeddings
+import src.config
 
 class UnetLayer(nn.Module):
     def __init__(self, upscale: bool, attention: bool, num_groups: int, 
@@ -28,25 +28,25 @@ class UnetLayer(nn.Module):
 class UNET(nn.Module):
     def __init__(self):
         super().__init__()
-        self.num_layers = len(config.CHANNELS)
-        self.shallow_conv = nn.Conv2d(config.INPUT_CHANNELS, config.CHANNELS[0], kernel_size=3, padding=1)
+        self.num_layers = len(src.config.CHANNELS)
+        self.shallow_conv = nn.Conv2d(src.config.INPUT_CHANNELS, src.config.CHANNELS[0], kernel_size=3, padding=1)
         
-        out_channels = (config.CHANNELS[-1] // 2) + config.CHANNELS[0]
+        out_channels = (src.config.CHANNELS[-1] // 2) + src.config.CHANNELS[0]
         self.late_conv = nn.Conv2d(out_channels, out_channels // 2, kernel_size=3, padding=1)
-        self.output_conv = nn.Conv2d(out_channels // 2, config.OUTPUT_CHANNELS, kernel_size=1)
+        self.output_conv = nn.Conv2d(out_channels // 2, src.config.OUTPUT_CHANNELS, kernel_size=1)
         self.relu = nn.ReLU(inplace=True)
         
-        self.embeddings = SinusoidalEmbeddings(time_steps=config.NUM_TIME_STEPS, embed_dim=config.TIME_EMB_DIM)
+        self.embeddings = SinusoidalEmbeddings(time_steps=src.config.NUM_TIME_STEPS, embed_dim=src.config.TIME_EMB_DIM)
         
         for i in range(self.num_layers):
             layer = UnetLayer(
-                upscale=config.UPSCALES[i],
-                attention=config.ATTENTIONS[i],
-                num_groups=config.NUM_GROUPS,
-                dropout_prob=config.DROPOUT_PROB,
-                C=config.CHANNELS[i],
-                num_heads=config.NUM_HEADS,
-                time_emb_dim=config.TIME_EMB_DIM
+                upscale=src.config.UPSCALES[i],
+                attention=src.config.ATTENTIONS[i],
+                num_groups=src.config.NUM_GROUPS,
+                dropout_prob=src.config.DROPOUT_PROB,
+                C=src.config.CHANNELS[i],
+                num_heads=src.config.NUM_HEADS,
+                time_emb_dim=src.config.TIME_EMB_DIM
             )
             setattr(self, f'Layer{i+1}', layer)
 

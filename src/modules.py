@@ -62,10 +62,11 @@ class Attention(nn.Module):
         b, c, h, w = x.shape
         x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.proj1(x)
-        x = rearrange(x, 'b L (K H C) -> K b H L C', K=3, H=self.num_heads)
+        d = c // self.num_heads
+        x = rearrange(x, 'b L (K H d) -> K b H L d', K=3, H=self.num_heads, d=d)
         q, k, v = x[0], x[1], x[2]
         x = F.scaled_dot_product_attention(q, k, v, is_causal=False, dropout_p=self.dropout_prob)
-        x = rearrange(x, 'b H (h w) C -> b (h w) (H C)', h=h, w=w)
+        x = rearrange(x, 'b H (h w) d -> b (h w) (H d)', h=h, w=w, d=d)
         x = self.proj2(x)
         return rearrange(x, 'b (h w) C -> b C h w', h=h, w=w)
 
