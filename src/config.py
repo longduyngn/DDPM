@@ -12,7 +12,7 @@ NUM_EPOCHS = 10
 LR = 1e-5
 EMA_DECAY = 0.9999
 SEED = 42
-NUM_WORKERS = 0 # Đặt về 0 để tránh rò rỉ RAM khi chạy multiprocessing trên Kaggle/Linux và lỗi khi chạy win
+NUM_WORKERS = 4 # Đặt về 0 để tránh rò rỉ RAM khi chạy multiprocessing trên Kaggle/Linux và lỗi khi chạy win
 
 # --- Cấu trúc U-Net ---
 CHANNELS = [64, 128, 256, 512, 512, 384] #từ 1 lên 64 nhờ shallow conv,tăng dần attri và sau đó giảm dần về cuối cân nhắc concat nên có số chiều như vậy . Cuối cùng là late conv để chuyển về 1
