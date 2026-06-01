@@ -6,12 +6,12 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 NUM_GPUS = torch.cuda.device_count() if torch.cuda.is_available() else 0
 
 # --- Lựa chọn Bộ dữ liệu ---
-DATASET = 'CIFAR10' # Lựa chọn: 'MNIST', 'CIFAR10'
+DATASET = 'MNIST' # Lựa chọn: 'MNIST', 'CIFAR10'
 
 # --- Siêu tham số Huấn luyện ---
 BATCH_SIZE = 64
 NUM_TIME_STEPS = 1000
-NUM_EPOCHS = 200
+NUM_EPOCHS = 2
 LR = 2e-4
 EMA_DECAY = 0.9999
 SEED = 42
@@ -21,9 +21,9 @@ BETA_START = 1e-4
 BETA_END = 0.02
 
 # --- Cấu trúc U-Net ---
-CHANNELS = [64, 128, 256, 512, 512, 384] #từ 1 lên 64 nhờ shallow conv,tăng dần attri và sau đó giảm dần về cuối cân nhắc concat nên có số chiều như vậy . Cuối cùng là late conv để chuyển về 1
-ATTENTIONS = [False, True, False, False, False, True]
-UPSCALES = [False, False, False, True, True, True]
+CHANNELS = [32, 64, 128, 256, 512, 256, 128, 64] # Cấu trúc 8 tầng đối xứng hoàn toàn nhỏ gọn (~35.7M tham số)
+ATTENTIONS = [False, True, True, False, False, False, True, True] # Chỉ chạy Attention ở độ phân giải 16x16 để tiết kiệm VRAM
+UPSCALES = [False, False, False, False, True, True, True, True]
 NUM_GROUPS = 32
 DROPOUT_PROB = 0.1
 NUM_HEADS = 8
