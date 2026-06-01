@@ -43,7 +43,7 @@ def train(resume_checkpoint=None):
         transform = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
-            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+            transforms.ColorJitter(brightness=0.05, contrast=0.05, saturation=0.05),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
@@ -178,8 +178,8 @@ def train(resume_checkpoint=None):
             torch.save(checkpoint, best_path)
             print(f"[*] New best loss ({best_loss:.5f}). Saved to {best_path}")
             
-        # 3. Chỉ lưu checkpoint định kỳ mỗi 10 epoch hoặc ở epoch cuối cùng
-        if (i + 1) % 10 == 0 or (i + 1) == src.config.NUM_EPOCHS:
+        # 3. Chỉ lưu checkpoint định kỳ mỗi SAVE_EVERY epoch hoặc ở epoch cuối cùng
+        if (i + 1) % src.config.SAVE_EVERY == 0 or (i + 1) == src.config.NUM_EPOCHS:
             epoch_path = os.path.join(src.config.CHECKPOINT_DIR, f'ddpm_epoch_{i+1}.pt')
             torch.save(checkpoint, epoch_path)
             print(f"[*] Saved periodic checkpoint to {epoch_path}")
