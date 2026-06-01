@@ -29,7 +29,7 @@ def set_seed(seed: int = 42):
     np.random.seed(seed)
     random.seed(seed)
 
-def train(resume_checkpoint=None):
+def train(resume_checkpoint=src.config.CHECKPOINT):
     set_seed(src.config.SEED)
     
     # Chuẩn hóa về [-1, 1]
@@ -111,7 +111,7 @@ def train(resume_checkpoint=None):
     for i in range(start_epoch, src.config.NUM_EPOCHS):
         model.train()
         total_loss = 0
-        pbar = tqdm(train_loader, desc=f"Epoch {i+1}/{src.config.NUM_EPOCHS}", mininterval=10)
+        pbar = tqdm(train_loader, desc=f"Epoch {i+1}/{src.config.NUM_EPOCHS}", mininterval=1000)
         
         for bidx, (x, _) in enumerate(pbar):
             # Cấp phát thiết bị động
