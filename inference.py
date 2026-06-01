@@ -25,11 +25,16 @@ def inference(checkpoint_path: str, num_samples: int = 5):
     s = sum([p.numel() for p in model.parameters()])
     print(f"[*] Number of parameters: {s}")
 
-    scheduler = DDPM_Scheduler(num_time_steps=src.config.NUM_TIME_STEPS).to(src.config.DEVICE)
+    scheduler = DDPM_Scheduler(
+        num_time_steps=src.config.NUM_TIME_STEPS,
+        schedule_type=src.config.BETA_SCHEDULE,
+        beta_start=src.config.BETA_START,
+        beta_end=src.config.BETA_END
+    ).to(src.config.DEVICE)
     times = [0, 15, 50, 100, 200, 300, 400, 550, 700, 999]
     
     with torch.no_grad():
-        z = torch.randn(num_samples, 1, 32, 32, device=src.config.DEVICE)
+        z = torch.randn(num_samples, src.config.INPUT_CHANNELS, 32, 32, device=src.config.DEVICE)
         images = []
         
         # Khử nhiễu tuần tự từ NUM_TIME_STEPS - 1 về 0
@@ -49,7 +54,7 @@ def inference(checkpoint_path: str, num_samples: int = 5):
             
             # Không cộng thêm nhiễu ở bước cuối cùng (t = 0)
             if t > 0:
-                e = torch.randn(num_samples, 1, 32, 32, device=src.config.DEVICE)
+                e = torch.randn(num_samples, src.config.INPUT_CHANNELS, 32, 32, device=src.config.DEVICE)
                 z = z + (e * torch.sqrt(beta_t))
         
         print("[*] Inference complete. Saving sequences...")

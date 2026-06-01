@@ -33,17 +33,34 @@ def train(resume_checkpoint=None):
     set_seed(src.config.SEED)
     
     # Chuẩn hóa về [-1, 1]
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
-    ])
-    
-    train_dataset = datasets.MNIST(root=src.config.DATA_DIR, train=True, download=True, transform=transform)
+    if src.config.DATASET == 'MNIST':
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
+        train_dataset = datasets.MNIST(root=src.config.DATA_DIR, train=True, download=True, transform=transform)
+    elif src.config.DATASET == 'CIFAR10':
+        transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(32, padding=4, padding_mode='reflect'),
+            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        train_dataset = datasets.CIFAR10(root=src.config.DATA_DIR, train=True, download=True, transform=transform)
+    else:
+        raise ValueError(f"Unknown dataset: {src.config.DATASET}")
+
     train_loader = DataLoader(train_dataset, batch_size=src.config.BATCH_SIZE, shuffle=True, 
                               drop_last=True, num_workers=src.config.NUM_WORKERS, pin_memory=True,
                               persistent_workers=(src.config.NUM_WORKERS > 0))
 
-    scheduler = DDPM_Scheduler(num_time_steps=src.config.NUM_TIME_STEPS).to(src.config.DEVICE)
+    scheduler = DDPM_Scheduler(
+        num_time_steps=src.config.NUM_TIME_STEPS,
+        schedule_type=src.config.BETA_SCHEDULE,
+        beta_start=src.config.BETA_START,
+        beta_end=src.config.BETA_END
+    ).to(src.config.DEVICE)
     model = UNET()
     
     # --- GIAI ĐOẠN 3: TỰ ĐỘNG ĐA GPU (Multi-GPU Allocation) ---
@@ -99,7 +116,8 @@ def train(resume_checkpoint=None):
         for bidx, (x, _) in enumerate(pbar):
             # Cấp phát thiết bị động
             x = x.to(src.config.DEVICE, non_blocking=True)
-            x = F.pad(x, (2, 2, 2, 2))
+            if x.shape[-2:] != (32, 32):
+                x = F.pad(x, (2, 2, 2, 2))
             
             # Sử dụng x.size(0) thay cho config.BATCH_SIZE để an toàn nếu chạy batch cuối hoặc chia batch trên Multi-GPU
             curr_batch_size = x.size(0)

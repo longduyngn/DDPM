@@ -71,9 +71,25 @@ class Attention(nn.Module):
         return rearrange(x, 'b (h w) C -> b C h w', h=h, w=w)
 
 class DDPM_Scheduler(nn.Module):
-    def __init__(self, num_time_steps: int = 1000):
+    def __init__(self, num_time_steps: int = 1000, schedule_type: str = 'linear', beta_start: float = 1e-4, beta_end: float = 0.02):
         super().__init__()
-        beta = torch.linspace(1e-4, 0.02, num_time_steps, requires_grad=False)
+        
+        if schedule_type == 'linear' or schedule_type == 'nondecreasing':
+            beta = torch.linspace(beta_start, beta_end, num_time_steps, requires_grad=False)
+        elif schedule_type == 'non-increasing':
+            beta = torch.linspace(beta_end, beta_start, num_time_steps, requires_grad=False)
+        elif schedule_type == 'cosine':
+            # Cosine schedule (Improved DDPM - Nichol & Dhariwal 2021)
+            s = 0.008
+            steps = num_time_steps + 1
+            t = torch.linspace(0, num_time_steps, steps, dtype=torch.float64)
+            alphas_cumprod = torch.cos(((t / num_time_steps) + s) / (1 + s) * math.pi / 2) ** 2
+            alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+            betas = 1.0 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+            beta = torch.clip(betas, 0, 0.999).float()
+        else:
+            raise ValueError(f"Unknown schedule type: {schedule_type}")
+            
         alpha = 1.0 - beta
         alpha_bar = torch.cumprod(alpha, dim=0) # Đã chuẩn hóa thành alpha_bar (tích lũy)
         
@@ -88,7 +104,10 @@ def display_reverse(images: list, save_path: str = None):
         x = rearrange(x, 'c h w -> h w c').numpy()
         # Chuẩn hóa ngược từ [-1, 1] về [0, 1] để hiển thị
         x = (x + 1.0) / 2.0
-        ax.imshow(x, cmap='gray')
+        if x.shape[-1] == 1:
+            ax.imshow(x.squeeze(-1), cmap='gray')
+        else:
+            ax.imshow(x)
         ax.axis('off')
     
     if save_path is not None:
