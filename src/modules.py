@@ -101,9 +101,9 @@ def display_reverse(images: list, save_path: str = None):
     fig, axes = plt.subplots(1, len(images), figsize=(len(images), 1))
     for i, ax in enumerate(axes.flat):
         x = images[i].squeeze(0).cpu()
-        x = rearrange(x, 'c h w -> h w c').numpy()
-        # Chuẩn hóa ngược từ [-1, 1] về [0, 1] để hiển thị
-        x = (x + 1.0) / 2.0
+        x = rearrange(x, 'c h w -> h w c')
+        # Chuẩn hóa ngược từ [-1, 1] về [0, 1] và giới hạn phạm vi hợp lệ [0, 1] để tránh cảnh báo của matplotlib
+        x = torch.clamp((x + 1.0) / 2.0, 0.0, 1.0).numpy()
         if x.shape[-1] == 1:
             ax.imshow(x.squeeze(-1), cmap='gray')
         else:

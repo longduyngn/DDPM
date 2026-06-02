@@ -6,12 +6,12 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 NUM_GPUS = torch.cuda.device_count() if torch.cuda.is_available() else 0
 
 # --- Lựa chọn Bộ dữ liệu ---
-DATASET = 'MNIST' # Lựa chọn: 'MNIST', 'CIFAR10'
+DATASET = 'CIFAR10' # Lựa chọn: 'MNIST', 'CIFAR10'
 
 # --- Siêu tham số Huấn luyện ---
-BATCH_SIZE = 64
+BATCH_SIZE = 256
 NUM_TIME_STEPS = 1000
-NUM_EPOCHS = 2
+NUM_EPOCHS = 300
 LR = 2e-4
 EMA_DECAY = 0.9999
 SEED = 42
@@ -21,8 +21,8 @@ BETA_START = 1e-4
 BETA_END = 0.02
 
 # --- Cấu trúc U-Net ---
-CHANNELS = [32, 64, 128, 256, 512, 256, 128, 64] # Cấu trúc 8 tầng đối xứng hoàn toàn nhỏ gọn (~35.7M tham số)
-ATTENTIONS = [False, True, True, False, False, False, True, True] # Chỉ chạy Attention ở độ phân giải 16x16 để tiết kiệm VRAM
+CHANNELS = [ 64, 128, 256, 512, 1024, 512, 256, 128] # Cấu trúc 8 tầng đối xứng hoàn toàn nhỏ gọn (~35.7M tham số)
+ATTENTIONS = [False, True, False, False, False, False, False, True] # Chỉ chạy Attention ở độ phân giải 16x16 để tiết kiệm VRAM
 UPSCALES = [False, False, False, False, True, True, True, True]
 NUM_GROUPS = 32
 DROPOUT_PROB = 0.1
@@ -43,8 +43,8 @@ TIME_EMB_DIM = max(CHANNELS) # Chiều lớn nhất để làm vector thời gia
 DATA_DIR = 'data'
 CHECKPOINT_DIR = 'checkpoints'
 REPORT_DIR = 'report'
-SAVE_EVERY = 25
-CHECKPOINT = None 
+SAVE_EVERY = 100
+CHECKPOINT = 'auto' # Cấu hình checkpoint để resume. Có thể là: None, 'auto', 'latest', 'best', số epoch (ví dụ: 100 hoặc '100'), tên file (ví dụ: 'ddpm_epoch_100.pt'), hoặc đường dẫn đầy đủ.
 
 # Đảm bảo thư mục lưu trữ tồn tại
 os.makedirs(DATA_DIR, exist_ok=True)

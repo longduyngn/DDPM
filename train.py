@@ -82,29 +82,81 @@ def train(resume_checkpoint=src.config.CHECKPOINT):
     best_loss = float('inf')
     train_losses = []
     
-    if resume_checkpoint == 'latest':
-        latest_path = os.path.join(src.config.CHECKPOINT_DIR, 'latest_ddpm.pt')
-        if os.path.exists(latest_path):
-            resume_checkpoint = latest_path
-        else:
-            resume_checkpoint = None
-
     start_epoch = 0
-    if resume_checkpoint is not None and os.path.exists(resume_checkpoint):
-        checkpoint = torch.load(resume_checkpoint, map_location=src.config.DEVICE)
-        # Xử lý an toàn tiền tố 'module.' nếu load checkpoint từ Multi-GPU sang Single-GPU
-        if isinstance(model, nn.DataParallel):
-            model.module.load_state_dict(checkpoint['weights'])
+    checkpoint = None
+    loaded_path = None
+    
+    if resume_checkpoint is not None and resume_checkpoint != '':
+        if str(resume_checkpoint).isdigit():
+            checkpoint_path = os.path.join(src.config.CHECKPOINT_DIR, f'ddpm_epoch_{resume_checkpoint}.pt')
+        elif resume_checkpoint == 'latest':
+            checkpoint_path = os.path.join(src.config.CHECKPOINT_DIR, 'latest_ddpm.pt')
+        elif resume_checkpoint == 'best':
+            checkpoint_path = os.path.join(src.config.CHECKPOINT_DIR, 'best_ddpm.pt')
+        elif resume_checkpoint == 'auto':
+            checkpoint_path = 'auto'
         else:
-            model.load_state_dict(checkpoint['weights'])
-        ema.load_state_dict(checkpoint['ema'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        if 'scaler' in checkpoint:
-            scaler.load_state_dict(checkpoint['scaler'])
-        best_loss = checkpoint.get('best_loss', float('inf'))
-        train_losses = checkpoint.get('train_losses', [])
-        start_epoch = checkpoint.get('epoch', 0)
-        print(f"[*] Resumed from epoch {start_epoch} (Best Loss: {best_loss:.5f})")
+            if os.path.exists(resume_checkpoint):
+                checkpoint_path = resume_checkpoint
+            else:
+                checkpoint_path = os.path.join(src.config.CHECKPOINT_DIR, resume_checkpoint)
+        
+        # Load logic with automatic fallback if 'latest' or 'auto'
+        if checkpoint_path == 'auto' or resume_checkpoint == 'latest':
+            paths_to_try = []
+            paths_to_try.append(os.path.join(src.config.CHECKPOINT_DIR, 'latest_ddpm.pt'))
+            
+            # Find and sort all periodic checkpoints ddpm_epoch_X.pt in descending order of epoch
+            import re
+            periodic_checkpoints = []
+            if os.path.exists(src.config.CHECKPOINT_DIR):
+                for filename in os.listdir(src.config.CHECKPOINT_DIR):
+                    match = re.match(r'^ddpm_epoch_(\d+)\.pt$', filename)
+                    if match:
+                        periodic_checkpoints.append((int(match.group(1)), os.path.join(src.config.CHECKPOINT_DIR, filename)))
+            
+            # Sort by epoch descending
+            periodic_checkpoints.sort(key=lambda x: x[0], reverse=True)
+            paths_to_try.extend([path for _, path in periodic_checkpoints])
+            
+            # Try loading until one succeeds
+            for path in paths_to_try:
+                if os.path.exists(path):
+                    try:
+                        print(f"[*] Trying to load checkpoint: {path}")
+                        checkpoint = torch.load(path, map_location=src.config.DEVICE)
+                        loaded_path = path
+                        break
+                    except Exception as e:
+                        print(f"[!] Failed to load checkpoint {path} (might be corrupted). Error: {e}")
+            
+            if checkpoint is None:
+                print(f"[*] No valid checkpoints found for '{resume_checkpoint}'. Starting training from scratch.")
+        else:
+            # Load specific checkpoint directly
+            if checkpoint_path and os.path.exists(checkpoint_path):
+                try:
+                    checkpoint = torch.load(checkpoint_path, map_location=src.config.DEVICE)
+                    loaded_path = checkpoint_path
+                except Exception as e:
+                    raise RuntimeError(f"[!] Failed to load requested checkpoint {checkpoint_path}. Error: {e}")
+            else:
+                raise FileNotFoundError(f"[!] Checkpoint not found at: {checkpoint_path or resume_checkpoint}")
+
+        if checkpoint is not None:
+            # Xử lý an toàn tiền tố 'module.' nếu load checkpoint từ Multi-GPU sang Single-GPU
+            if isinstance(model, nn.DataParallel):
+                model.module.load_state_dict(checkpoint['weights'])
+            else:
+                model.load_state_dict(checkpoint['weights'])
+            ema.load_state_dict(checkpoint['ema'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            if 'scaler' in checkpoint:
+                scaler.load_state_dict(checkpoint['scaler'])
+            best_loss = checkpoint.get('best_loss', float('inf'))
+            train_losses = checkpoint.get('train_losses', [])
+            start_epoch = checkpoint.get('epoch', 0)
+            print(f"[*] Resumed from epoch {start_epoch} (Best Loss: {best_loss:.5f}) using checkpoint: {loaded_path}")
 
     criterion = nn.MSELoss(reduction='mean')
 
@@ -199,4 +251,10 @@ def train(resume_checkpoint=src.config.CHECKPOINT):
         print(f"[*] Saved loss plot to {loss_plot_path}")
 
 if __name__ == '__main__':
-    train()
+    import argparse
+    parser = argparse.ArgumentParser(description="Train DDPM model.")
+    parser.add_argument('--resume', type=str, default=src.config.CHECKPOINT,
+                        help="Checkpoint to resume. Can be 'auto', 'latest', 'best', epoch number (e.g. 100), or a file path.")
+    args = parser.parse_args()
+    
+    train(resume_checkpoint=args.resume)

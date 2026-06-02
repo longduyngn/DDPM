@@ -45,9 +45,21 @@ def inference(checkpoint_path: str, num_samples: int = 5):
             alpha_bar_t = scheduler.alpha_bar[t_tensor].view(-1, 1, 1, 1)
             beta_t = scheduler.beta[t_tensor].view(-1, 1, 1, 1)
             
-            # Công thức tính toán bước Reverse bằng biến đã được vectorize
-            temp = beta_t / (torch.sqrt(1 - alpha_bar_t) * torch.sqrt(alpha_t))
-            z = (1 / torch.sqrt(alpha_t)) * z - (temp * eval_model(z, t_tensor))
+            if t > 0:
+                alpha_bar_t_minus_1 = scheduler.alpha_bar[t-1].view(-1, 1, 1, 1)
+            else:
+                alpha_bar_t_minus_1 = torch.tensor(1.0, device=src.config.DEVICE).view(-1, 1, 1, 1)
+                
+            pred_noise = eval_model(z, t_tensor)
+            
+            # Ước lượng x_0 và giới hạn (clip) trong khoảng [-1, 1]
+            x_0_est = (z - torch.sqrt(1 - alpha_bar_t) * pred_noise) / torch.sqrt(alpha_bar_t)
+            x_0_est = torch.clamp(x_0_est, -1.0, 1.0)
+            
+            # Tính toán mean của z_{t-1} dùng x_0_est đã được giới hạn
+            coef_x0 = torch.sqrt(alpha_bar_t_minus_1) * beta_t / (1 - alpha_bar_t)
+            coef_xt = torch.sqrt(alpha_t) * (1 - alpha_bar_t_minus_1) / (1 - alpha_bar_t)
+            z = coef_x0 * x_0_est + coef_xt * z
             
             if t in times:
                 images.append(z.clone())
