@@ -163,7 +163,7 @@ def train(resume_checkpoint=src.config.CHECKPOINT):
     for i in range(start_epoch, src.config.NUM_EPOCHS):
         model.train()
         total_loss = 0
-        pbar = tqdm(train_loader, desc=f"Epoch {i+1}/{src.config.NUM_EPOCHS}", mininterval=1000)
+        pbar = tqdm(train_loader, desc=f"Epoch {i+1}/{src.config.NUM_EPOCHS}", disable=src.config.DISABLE_TQDM)
         
         for bidx, (x, _) in enumerate(pbar):
             # Cấp phát thiết bị động

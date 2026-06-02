@@ -44,6 +44,7 @@ DATA_DIR = 'data'
 CHECKPOINT_DIR = 'checkpoints'
 REPORT_DIR = 'report'
 SAVE_EVERY = 100
+DISABLE_TQDM = True
 CHECKPOINT = 'auto' # Cấu hình checkpoint để resume. Có thể là: None, 'auto', 'latest', 'best', số epoch (ví dụ: 100 hoặc '100'), tên file (ví dụ: 'ddpm_epoch_100.pt'), hoặc đường dẫn đầy đủ.
 
 # Đảm bảo thư mục lưu trữ tồn tại
