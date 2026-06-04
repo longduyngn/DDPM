@@ -6,7 +6,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 NUM_GPUS = torch.cuda.device_count() if torch.cuda.is_available() else 0
 
 # --- Lựa chọn Bộ dữ liệu ---
-DATASET = 'CIFAR10' # Lựa chọn: 'MNIST', 'CIFAR10'
+DATASET = 'MNIST' # Lựa chọn: 'MNIST', 'CIFAR10'
 
 # --- Siêu tham số Huấn luyện ---
 BATCH_SIZE = 64
@@ -16,7 +16,7 @@ LR = 2e-4
 EMA_DECAY = 0.9999
 SEED = 42
 NUM_WORKERS = 4 # Đặt về 0 để tránh rò rỉ RAM khi chạy multiprocessing trên Kaggle/Linux và lỗi khi chạy win
-BETA_SCHEDULE = 'cosine' # Lựa chọn: 'linear', 'cosine', 'nondecreasing', 'non-increasing'
+BETA_SCHEDULE = 'linear' # Lựa chọn: 'linear', 'cosine', 'nondecreasing', 'non-increasing'
 BETA_START = 1e-4
 BETA_END = 0.02
 
@@ -45,6 +45,10 @@ CHECKPOINT_DIR = 'checkpoints'
 REPORT_DIR = 'report'
 SAVE_EVERY = 25
 CHECKPOINT = None 
+
+# --- Thiết lập DDIM (Giai đoạn 2 - DDIM) ---
+DDIM_STEPS = 100
+DDIM_ETA = 0
 
 # Đảm bảo thư mục lưu trữ tồn tại
 os.makedirs(DATA_DIR, exist_ok=True)
